@@ -3,6 +3,9 @@ package build
 import (
 	"fmt"
 	"io"
+	"os"
+	"runtime"
+	"strings"
 
 	"github.com/docker/docker/api/types/container"
 
@@ -112,11 +115,33 @@ func WithBinds(binds ...string) PhaseConfigProviderOperation {
 func WithDaemonAccess() PhaseConfigProviderOperation {
 	return func(provider *PhaseConfigProvider) {
 		WithRoot()(provider)
+
 		bind := "/var/run/docker.sock:/var/run/docker.sock"
+
+		if dockerHost, ok := os.LookupEnv("DOCKER_HOST"); ok {
+			if strings.HasPrefix(dockerHost, "unix://") {
+				bind = fmt.Sprintf("%s:/var/run/docker.sock", strings.TrimPrefix(dockerHost, "unix://"))
+			}
+			if strings.HasPrefix(dockerHost, "tcp://") {
+				bind = ""
+				if runtime.GOOS == "linux" {
+					provider.hostConf.NetworkMode = "host"
+					provider.ctrConf.Env = append(provider.ctrConf.Env, fmt.Sprintf("DOCKER_HOST=%s", dockerHost))
+				} else {
+					w := provider.errorWriter
+					if w == nil {
+						w = os.Stderr
+					}
+					fmt.Fprintln(w, "Don't know how to expose Docker API via TCP to the container.")
+				}
+			}
+		}
 		if provider.os == "windows" {
 			bind = `\\.\pipe\docker_engine:\\.\pipe\docker_engine`
 		}
-		provider.hostConf.Binds = append(provider.hostConf.Binds, bind)
+		if bind != "" {
+			provider.hostConf.Binds = append(provider.hostConf.Binds, bind)
+		}
 	}
 }
 
@@ -163,7 +188,16 @@ func WithLifecycleProxy(lifecycleExec *LifecycleExecution) PhaseConfigProviderOp
 
 func WithNetwork(networkMode string) PhaseConfigProviderOperation {
 	return func(provider *PhaseConfigProvider) {
-		provider.hostConf.NetworkMode = container.NetworkMode(networkMode)
+		if networkMode != "" {
+			if provider.hostConf.NetworkMode != "" {
+				w := provider.errorWriter
+				if w == nil {
+					w = os.Stderr
+				}
+				fmt.Fprintf(w, "Overriding network from %q to %q.", provider.hostConf.NetworkMode, networkMode)
+			}
+			provider.hostConf.NetworkMode = container.NetworkMode(networkMode)
+		}
 	}
 }
 

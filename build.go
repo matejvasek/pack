@@ -298,7 +298,8 @@ func (c *Client) Build(ctx context.Context, opts BuildOptions) error {
 		CacheImage:         opts.CacheImage,
 	}
 
-	lifecycleVersion := ephemeralBuilder.LifecycleDescriptor().Info.Version
+	lifecycleVersion := "0.10.2"  // ephemeralBuilder.LifecycleDescriptor().Info.Version
+	// fmt.Fprintf(os.Stderr, "### VERSION: %+v", lifecycleVersion)
 	// Technically the creator is supported as of platform API version 0.3 (lifecycle version 0.7.0+) but earlier versions
 	// have bugs that make using the creator problematic.
 	lifecycleSupportsCreator := !lifecycleVersion.LessThan(semver.MustParse(minLifecycleVersionSupportingCreator))
